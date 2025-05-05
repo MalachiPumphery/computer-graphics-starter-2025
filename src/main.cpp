@@ -1,7 +1,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
 #include <glm/glm.hpp>
 #include <string>
 #include <fstream>
@@ -18,6 +17,8 @@
 #include "Canis/World.hpp"
 #include "Canis/Editor.hpp"
 #include "Canis/FrameRateManager.hpp"
+#include <cstdlib> // For rand() and srand()
+#include <ctime>   // For seeding rand()
 
 using namespace glm;
 
@@ -92,7 +93,8 @@ int main(int argc, char* argv[])
 
     /// Load Image
     Canis::GLTexture glassTexture = Canis::LoadImageGL("assets/textures/glass.png", true);
-    Canis::GLTexture grassTexture = Canis::LoadImageGL("assets/textures/grass.png", false);
+    Canis::GLTexture grassTexture = Canis::LoadImageGL("assets/textures/grass_block_top.png", false);
+    Canis::GLTexture blueFlowerTexture = Canis::LoadImageGL("assets/textures/blue_orchid.png", false);
     Canis::GLTexture textureSpecular = Canis::LoadImageGL("assets/textures/container2_specular.png", true);
     /// End of Image Loading
 
@@ -116,23 +118,34 @@ int main(int argc, char* argv[])
 
                 switch (map[y][x][z])
                 {
-                case 1: // places a glass block
+                case 1: // places a grass block
+                    entity.tag = "grass";
+                    entity.albedo = &grassTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &Rotate;
+                    world.Spawn(entity);
+                    break;                
+                case 3: // places a flower block
+                    Canis:: Log("flower");
+                    entity.tag = "grass";
+                    entity.albedo = &blueFlowerTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &grassModel;
+                    entity.shader = &grassShader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &Rotate;
+                    world.Spawn(entity);
+                    break;
+                case 4: // places a glass block
                     entity.tag = "glass";
                     entity.albedo = &glassTexture;
                     entity.specular = &textureSpecular;
                     entity.model = &cubeModel;
                     entity.shader = &shader;
                     entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
-                    world.Spawn(entity);
-                    break;
-                case 2: // places a grass block
-                    entity.tag = "grass";
-                    entity.albedo = &grassTexture;
-                    entity.specular = &textureSpecular;
-                    entity.model = &grassModel;
-                    entity.shader = &grassShader;
-                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
-                    entity.Update = &Rotate;
                     world.Spawn(entity);
                     break;
                 default:
@@ -161,7 +174,7 @@ int main(int argc, char* argv[])
         // EndFrame will pause the app when running faster than frame limit
         fps = frameRateManager.EndFrame();
 
-        Canis::Log("FPS: " + std::to_string(fps) + " DeltaTime: " + std::to_string(deltaTime));
+        //Canis::Log("FPS: " + std::to_string(fps) + " DeltaTime: " + std::to_string(deltaTime));
     }
 
     return 0;
@@ -207,6 +220,46 @@ void LoadMap(std::string _path)
 
         map[map.size() - 1][map[map.size() - 1].size() - 1].push_back((unsigned int)number);
     }
+
+    // Add random grass placement
+    /*srand(static_cast<unsigned int>(time(0))); // Seed random number generator
+    int plotSize = 15; // Define the size of the plot
+    int grassLayer = 0; // Grass is placed on the ground layer
+    int flowerLayer = 1; // Flowers are placed on a layer above the grass
+    int fireplaceLayer = 2; // Fireplace is placed on a separate layer
+
+    // Ensure the flower and fireplace layers exist
+    while (map.size() <= fireplaceLayer)
+    {
+        map.push_back(std::vector<std::vector<unsigned int>>(plotSize, std::vector<unsigned int>(plotSize, 0)));
+    }
+
+    for (int x = 0; x < plotSize; x++)
+    {
+        for (int z = 0; z < 3; z++)
+        {
+            if (rand() % 5 == 0) // 20% chance to place a grass block
+            {
+                map[grassLayer][x][z] = 2; // Grass block
+
+                // 10% chance to place a flower on top of the grass
+                if (rand() % 10 == 0)
+                {
+                    map[flowerLayer][x][z] =  ; // Flower block
+                }
+            }
+        }
+    }
+
+    // Add a fireplace inside the house
+    int houseStart = 5; // Starting position of the house
+    int houseEnd = 10;  // Ending position of the house
+    int fireplaceX = (houseStart + houseEnd) / 2; // Center of the house
+    int fireplaceZ = houseStart + 1; // Near the wall
+
+    map[fireplaceLayer][fireplaceX][fireplaceZ] = 4; // Fireplace base block
+    map[fireplaceLayer + 1][fireplaceX][fireplaceZ] = 5; // Fireplace flame block
+    */
 }
 
 void SpawnLights(Canis::World &_world)
