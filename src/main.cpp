@@ -96,6 +96,11 @@ int main(int argc, char* argv[])
     Canis::GLTexture grassTexture = Canis::LoadImageGL("assets/textures/grass_block_top.png", false);
     Canis::GLTexture blueFlowerTexture = Canis::LoadImageGL("assets/textures/blue_orchid.png", false);
     Canis::GLTexture textureSpecular = Canis::LoadImageGL("assets/textures/container2_specular.png", true);
+    Canis::GLTexture oakLogTexture = Canis::LoadImageGL("assets/textures/oak_log.png", false);
+    Canis::GLTexture oakPlanksTexture = Canis::LoadImageGL("assets/textures/oak_planks.png", false);
+    Canis::GLTexture cobblestoneTexture = Canis::LoadImageGL("assets/textures/cobblestone.png", false);
+    Canis::GLTexture bricksTexture = Canis::LoadImageGL("assets/textures/bricks.png", false);
+    Canis::GLTexture grassSideTexture = Canis::LoadImageGL("assets/textures/grass_block_side.png", false);
     /// End of Image Loading
 
     /// Load Models
@@ -128,9 +133,17 @@ int main(int argc, char* argv[])
                     entity.Update = &Rotate;
                     world.Spawn(entity);
                     break;                
+                case 2: // places a grass side block
+                    entity.tag = "grass_side";
+                    entity.albedo = &grassSideTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
                 case 3: // places a flower block
-                    Canis:: Log("flower");
-                    entity.tag = "grass";
+                    entity.tag = "flower";
                     entity.albedo = &blueFlowerTexture;
                     entity.specular = &textureSpecular;
                     entity.model = &grassModel;
@@ -139,9 +152,54 @@ int main(int argc, char* argv[])
                     entity.Update = &Rotate;
                     world.Spawn(entity);
                     break;
-                case 4: // places a glass block
+                case 4: // places a glass block (windows)
                     entity.tag = "glass";
                     entity.albedo = &glassTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 5: // places a floor block (house floor)
+                    entity.tag = "floor";
+                    entity.albedo = &oakPlanksTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 6: // places a fireplace base block
+                    entity.tag = "fireplace";
+                    entity.albedo = &bricksTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 8: // places a house wall block (oak log)
+                    entity.tag = "wall";
+                    entity.albedo = &oakLogTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 9: // places a house roof block (cobblestone)
+                    entity.tag = "roof";
+                    entity.albedo = &cobblestoneTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 10: // places a house foundation block (bricks)
+                    entity.tag = "foundation";
+                    entity.albedo = &bricksTexture;
                     entity.specular = &textureSpecular;
                     entity.model = &cubeModel;
                     entity.shader = &shader;
@@ -187,79 +245,77 @@ void Rotate(Canis::World &_world, Canis::Entity &_entity, float _deltaTime)
 
 void LoadMap(std::string _path)
 {
-    std::ifstream file;
-    file.open(_path);
+    // Initialize the map with 5 layers (ground, foundation, floor, walls, roof)
+    map = std::vector<std::vector<std::vector<unsigned int>>>(5, 
+        std::vector<std::vector<unsigned int>>(15, 
+            std::vector<unsigned int>(15, 0)));
 
-    if (!file.is_open())
-    {
-        printf("file not found at: %s \n", _path.c_str());
-        exit(1);
-    }
-
-    int number = 0;
-    int layer = 0;
-
-    map.push_back(std::vector<std::vector<unsigned int>>());
-    map[layer].push_back(std::vector<unsigned int>());
-
-    while (file >> number)
-    {
-        if (number == -2) // add new layer
-        {
-            layer++;
-            map.push_back(std::vector<std::vector<unsigned int>>());
-            map[map.size() - 1].push_back(std::vector<unsigned int>());
-            continue;
+    // Fill ground layer with grass blocks
+    for (int x = 0; x < 15; x++) {
+        for (int z = 0; z < 15; z++) {
+            map[0][x][z] = 1; // Grass block
         }
+    }
 
-        if (number == -1) // add new row
-        {
-            map[map.size() - 1].push_back(std::vector<unsigned int>());
-            continue;
+    // House dimensions
+    int houseStartX = 5;
+    int houseEndX = 10;
+    int houseStartZ = 5;
+    int houseEndZ = 10;
+
+    // Create foundation (layer 1)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            map[1][x][z] = 10; // Foundation blocks
         }
-
-        map[map.size() - 1][map[map.size() - 1].size() - 1].push_back((unsigned int)number);
     }
 
-    // Add random grass placement
-    /*srand(static_cast<unsigned int>(time(0))); // Seed random number generator
-    int plotSize = 15; // Define the size of the plot
-    int grassLayer = 0; // Grass is placed on the ground layer
-    int flowerLayer = 1; // Flowers are placed on a layer above the grass
-    int fireplaceLayer = 2; // Fireplace is placed on a separate layer
-
-    // Ensure the flower and fireplace layers exist
-    while (map.size() <= fireplaceLayer)
-    {
-        map.push_back(std::vector<std::vector<unsigned int>>(plotSize, std::vector<unsigned int>(plotSize, 0)));
+    // Create floor (layer 2)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            map[2][x][z] = 5; // Floor blocks
+        }
     }
 
-    for (int x = 0; x < plotSize; x++)
-    {
-        for (int z = 0; z < 3; z++)
-        {
-            if (rand() % 5 == 0) // 20% chance to place a grass block
-            {
-                map[grassLayer][x][z] = 2; // Grass block
-
-                // 10% chance to place a flower on top of the grass
-                if (rand() % 10 == 0)
-                {
-                    map[flowerLayer][x][z] =  ; // Flower block
-                }
+    // Create walls (layer 3)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            if (x == houseStartX || x == houseEndX || z == houseStartZ || z == houseEndZ) {
+                map[3][x][z] = 8; // Wall blocks
             }
         }
     }
 
-    // Add a fireplace inside the house
-    int houseStart = 5; // Starting position of the house
-    int houseEnd = 10;  // Ending position of the house
-    int fireplaceX = (houseStart + houseEnd) / 2; // Center of the house
-    int fireplaceZ = houseStart + 1; // Near the wall
+    // Add windows
+    map[3][houseStartX][(houseStartZ + houseEndZ) / 2] = 4; // Window on north wall
+    map[3][houseEndX][(houseStartZ + houseEndZ) / 2] = 4;   // Window on south wall
+    map[3][(houseStartX + houseEndX) / 2][houseStartZ] = 4; // Window on west wall
+    map[3][(houseStartX + houseEndX) / 2][houseEndZ] = 4;   // Window on east wall
 
-    map[fireplaceLayer][fireplaceX][fireplaceZ] = 4; // Fireplace base block
-    map[fireplaceLayer + 1][fireplaceX][fireplaceZ] = 5; // Fireplace flame block
-    */
+    // Create roof (layer 4)
+    for (int x = houseStartX - 1; x <= houseEndX + 1; x++) {
+        for (int z = houseStartZ - 1; z <= houseEndZ + 1; z++) {
+            if (x >= houseStartX && x <= houseEndX && z >= houseStartZ && z <= houseEndZ) {
+                map[4][x][z] = 9; // Roof blocks
+            }
+        }
+    }
+
+    // Add random grass and flowers around the house
+    srand(static_cast<unsigned int>(time(0)));
+    for (int i = 0; i < 20; i++) {
+        int x = rand() % 15;
+        int z = rand() % 15;
+        
+        // Don't place grass/flowers where the house is
+        if (x < houseStartX - 1 || x > houseEndX + 1 || z < houseStartZ - 1 || z > houseEndZ + 1) {
+            if (rand() % 2 == 0) {
+                map[0][x][z] = 2; // Grass side block
+            } else {
+                map[0][x][z] = 3; // Flower block
+            }
+        }
+    }
 }
 
 void SpawnLights(Canis::World &_world)
