@@ -1,130 +1,408 @@
-#version 330 core
-//The fragment shader operates on each pixel in a given polygon
-out vec4 FragColor;
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <glm/glm.hpp>
+#include <string>
+#include <fstream>
+#include "Canis/Canis.hpp"
+#include "Canis/Entity.hpp"
+#include "Canis/Graphics.hpp"
+#include "Canis/Window.hpp"
+#include "Canis/Shader.hpp"
+#include "Canis/Debug.hpp"
+#include "Canis/IOManager.hpp"
+#include "Canis/InputManager.hpp"
+#include "Canis/Camera.hpp"
+#include "Canis/Model.hpp"
+#include "Canis/World.hpp"
+#include "Canis/Editor.hpp"
+#include "Canis/FrameRateManager.hpp"
+#include <cstdlib> // For rand() and srand()
+#include <ctime>   // For seeding rand()
 
-struct Material {
-	sampler2D diffuse;
-	sampler2D specular;
-	float shininess;
-};
+using namespace glm;
 
-struct DirectionalLight
+// git restore .
+// git fetch
+// git pull
+
+// 3d array
+std::vector<std::vector<std::vector<unsigned int>>> map = {};
+
+// declaring functions
+void SpawnLights(Canis::World &_world);
+void LoadMap(std::string _path);
+void Rotate(Canis::World &_world, Canis::Entity &_entity, float _deltaTime);
+void AnimateFire(Canis::World &_world, Canis::Entity &_entity, float _deltaTime);
+
+#ifdef _WIN32
+#define main SDL_main
+extern "C" int main(int argc, char* argv[])
+#else
+int main(int argc, char* argv[])
+#endif
 {
-    vec3 direction;
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
-};
+    Canis::Init();
+    Canis::InputManager inputManager;
+    Canis::FrameRateManager frameRateManager;
+    frameRateManager.Init(60);
 
-struct PointLight {
-    vec3 position;  
-  
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
-	
-    float constant;
-    float linear;
-    float quadratic;
-};
+    /// SETUP WINDOW
+    Canis::Window window;
+    window.MouseLock(true);
 
-in vec2 fragmentUV;
-in vec3 fragmentPos;
-in vec3 fragmentNormal;
+    unsigned int flags = 0;
 
-uniform vec3 COLOR;
-uniform Material MATERIAL;
-uniform DirectionalLight DIRECTIONALLIGHT;
-uniform PointLight POINTLIGHTS[4];
-uniform int NUMBEROFPOINTLIGHTS;
-uniform float TIME;
+    if (Canis::GetConfig().fullscreen)
+        flags |= Canis::WindowFlags::FULLSCREEN;
 
-uniform vec3 VIEWPOS;
+    window.Create("Hello Graphics", Canis::GetConfig().width, Canis::GetConfig().heigth, flags);
+    /// END OF WINDOW SETUP
 
-uniform sampler2D MATERIAL_DIFFUSE;
-uniform sampler2D MATERIAL_SPECULAR;
-uniform float MATERIAL_SHININESS;
-uniform bool WIND;
-uniform bool FIRE;
-uniform float WINDEFFECT;
+    Canis::World world(&window, &inputManager, "assets/textures/lowpoly-skybox/");
+    SpawnLights(world);
 
-vec3 CalculateDirectionalLight(DirectionalLight _directionalLight);
-vec3 CalculatePointLight(PointLight _pointLight);
+    Canis::Editor editor(&window, &world, &inputManager);
 
-void main() {
-	vec2 texCoords = fragmentUV;
-	
-	if (FIRE) {
-		// Animate fire texture coordinates
-		texCoords.y += sin(TIME * 3.0 + texCoords.x * 10.0) * 0.1;
-		texCoords.x += sin(TIME * 2.0 + texCoords.y * 8.0) * 0.1;
-	}
-	
-	vec4 texColor = texture(MATERIAL_DIFFUSE, texCoords);
-	
-	if (FIRE) {
-		// Add fire glow effect
-		float glow = sin(TIME * 4.0) * 0.5 + 0.5;
-		texColor.rgb += vec3(glow * 0.3, glow * 0.2, 0.0);
-	}
+    Canis::Graphics::EnableAlphaChannel();
+    Canis::Graphics::EnableDepthTest();
 
-	if (texColor.a <= 0.0)
-	{
-		discard;
-	}
+    /// SETUP SHADER
+    Canis::Shader shader;
+    shader.Compile("assets/shaders/hello_shader.vs", "assets/shaders/hello_shader.fs");
+    shader.AddAttribute("aPosition");
+    shader.Link();
+    shader.Use();
+    shader.SetInt("MATERIAL.diffuse", 0);
+    shader.SetInt("MATERIAL.specular", 1);
+    shader.SetFloat("MATERIAL.shininess", 64);
+    shader.SetBool("WIND", false);
+    shader.UnUse();
 
-	vec3 result = CalculateDirectionalLight(DIRECTIONALLIGHT);
+    Canis::Shader grassShader;
+    grassShader.Compile("assets/shaders/hello_shader.vs", "assets/shaders/hello_shader.fs");
+    grassShader.AddAttribute("aPosition");
+    grassShader.Link();
+    grassShader.Use();
+    grassShader.SetInt("MATERIAL.diffuse", 0);
+    grassShader.SetInt("MATERIAL.specular", 1);
+    grassShader.SetFloat("MATERIAL.shininess", 64);
+    grassShader.SetBool("WIND", true);
+    grassShader.SetFloat("WINDEFFECT", 0.2);
+    grassShader.UnUse();
 
-	for(int i = 0; i < NUMBEROFPOINTLIGHTS; i++)
-		result += CalculatePointLight(POINTLIGHTS[i]);
+    Canis::Shader fireShader;
+    fireShader.Compile("assets/shaders/hello_shader.vs", "assets/shaders/hello_shader.fs");
+    fireShader.AddAttribute("aPosition");
+    fireShader.Link();
+    fireShader.Use();
+    fireShader.SetInt("MATERIAL.diffuse", 0);
+    fireShader.SetInt("MATERIAL.specular", 1);
+    fireShader.SetFloat("MATERIAL.shininess", 32);
+    fireShader.SetBool("FIRE", true);
+    fireShader.SetFloat("TIME", 0.0f);
+    fireShader.UnUse();
+    /// END OF SHADER
 
-	FragColor = texColor * vec4(result, 1.0);
+    /// Load Image
+    Canis::GLTexture glassTexture = Canis::LoadImageGL("assets/textures/glass.png", true);
+    Canis::GLTexture grassTexture = Canis::LoadImageGL("assets/textures/grass_block_top.png", false);
+    Canis::GLTexture blueFlowerTexture = Canis::LoadImageGL("assets/textures/blue_orchid.png", false);
+    Canis::GLTexture textureSpecular = Canis::LoadImageGL("assets/textures/container2_specular.png", true);
+    Canis::GLTexture oakLogTexture = Canis::LoadImageGL("assets/textures/oak_log.png", false);
+    Canis::GLTexture oakPlanksTexture = Canis::LoadImageGL("assets/textures/oak_planks.png", false);
+    Canis::GLTexture cobblestoneTexture = Canis::LoadImageGL("assets/textures/cobblestone.png", false);
+    Canis::GLTexture bricksTexture = Canis::LoadImageGL("assets/textures/bricks.png", false);
+    Canis::GLTexture grassSideTexture = Canis::LoadImageGL("assets/textures/grass_block_side.png", false);
+    Canis::GLTexture fireTexture = Canis::LoadImageGL("assets/textures/fire.png", true);
+    /// End of Image Loading
+
+    /// Load Models
+    Canis::Model cubeModel = Canis::LoadModel("assets/models/cube.obj");
+    Canis::Model grassModel = Canis::LoadModel("assets/models/plants.obj");
+    /// END OF LOADING MODEL
+
+    // Load Map into 3d array
+    LoadMap("assets/maps/level.map");
+
+    // Loop map and spawn objects
+    for (int y = 0; y < map.size(); y++)
+    {
+        for (int x = 0; x < map[y].size(); x++)
+        {
+            for (int z = 0; z < map[y][x].size(); z++)
+            {
+                Canis::Entity entity;
+                entity.active = true;
+
+                switch (map[y][x][z])
+                {
+                case 1: // places a grass block
+                    entity.tag = "grass";
+                    entity.albedo = &grassTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &Rotate;
+                    world.Spawn(entity);
+                    break;                
+                case 2: // places a grass side block
+                    entity.tag = "grass_side";
+                    entity.albedo = &grassSideTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 3: // places a flower block
+                    entity.tag = "flower";
+                    entity.albedo = &blueFlowerTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &grassModel;
+                    entity.shader = &grassShader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &Rotate;
+                    world.Spawn(entity);
+                    break;
+                case 4: // places a glass block (windows)
+                    entity.tag = "glass";
+                    entity.albedo = &glassTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 5: // places a floor block (house floor)
+                    entity.tag = "floor";
+                    entity.albedo = &oakPlanksTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 6: // places a fireplace base block
+                    entity.tag = "fireplace";
+                    entity.albedo = &bricksTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 7: // places an animated fire
+                    entity.tag = "fire";
+                    entity.albedo = &fireTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &fireShader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &AnimateFire;
+                    world.Spawn(entity);
+                    break;
+                case 8: // places a house wall block (oak log)
+                    entity.tag = "wall";
+                    entity.albedo = &oakLogTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 9: // places a house roof block (cobblestone)
+                    entity.tag = "roof";
+                    entity.albedo = &cobblestoneTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 10: // places a house foundation block (bricks)
+                    entity.tag = "foundation";
+                    entity.albedo = &bricksTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &shader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
+
+    double deltaTime = 0.0;
+    double fps = 0.0;
+
+    // Application loop
+    while (inputManager.Update(Canis::GetConfig().width, Canis::GetConfig().heigth))
+    {
+        deltaTime = frameRateManager.StartFrame();
+        Canis::Graphics::ClearBuffer(COLOR_BUFFER_BIT | DEPTH_BUFFER_BIT);
+
+        world.Update(deltaTime);
+        world.Draw(deltaTime);
+
+        editor.Draw();
+
+        window.SwapBuffer();
+
+        // EndFrame will pause the app when running faster than frame limit
+        fps = frameRateManager.EndFrame();
+
+        //Canis::Log("FPS: " + std::to_string(fps) + " DeltaTime: " + std::to_string(deltaTime));
+    }
+
+    return 0;
 }
 
-vec3 CalculateDirectionalLight(DirectionalLight _directionalLight)
+void Rotate(Canis::World &_world, Canis::Entity &_entity, float _deltaTime)
 {
-    // ambient
-    vec3 ambient = _directionalLight.ambient;
-  	
-    // diffuse 
-    vec3 norm = normalize(fragmentNormal);
-    vec3 lightDir = normalize(-_directionalLight.direction);  
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = _directionalLight.diffuse * diff;  
-    
-    // specular
-    vec3 viewDir = normalize(VIEWPOS - fragmentPos);
-    vec3 reflectDir = reflect(-lightDir, norm);  
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), MATERIAL.shininess);
-    vec3 specular = _directionalLight.specular * spec * texture(MATERIAL.specular, fragmentUV).rgb;  
-        
-    return ambient + diffuse + specular;
+    //_entity.transform.rotation.y += _deltaTime;
 }
 
-vec3 CalculatePointLight(PointLight _pointLight)
+void LoadMap(std::string _path)
 {
-	// ambient
-    vec3 ambient = _pointLight.ambient;
-  	
-    // diffuse 
-    vec3 norm = normalize(fragmentNormal);
-    vec3 lightDir = normalize(_pointLight.position - fragmentPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = _pointLight.diffuse * diff;  
-    
-    // specular
-    vec3 viewDir = normalize(VIEWPOS - fragmentPos);
-    vec3 reflectDir = reflect(-lightDir, norm);  
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), MATERIAL.shininess);
-    vec3 specular = _pointLight.specular * spec * texture(MATERIAL.specular, fragmentUV).rgb;  
-    
-    // attenuation
-    float distance    = length(_pointLight.position - fragmentPos);
-    float attenuation = 1.0 / (_pointLight.constant + _pointLight.linear * distance + _pointLight.quadratic * (distance * distance));    
+    // Initialize the map with 5 layers (ground, foundation, floor, walls, roof)
+    map = std::vector<std::vector<std::vector<unsigned int>>>(5, 
+        std::vector<std::vector<unsigned int>>(15, 
+            std::vector<unsigned int>(15, 0)));
 
-    ambient  *= attenuation;  
-    diffuse   *= attenuation;
-    specular *= attenuation;   
+    // Fill ground layer with grass blocks
+    for (int x = 0; x < 15; x++) {
+        for (int z = 0; z < 15; z++) {
+            map[0][x][z] = 1; // Grass block
+        }
+    }
+
+    // House dimensions
+    int houseStartX = 5;
+    int houseEndX = 10;
+    int houseStartZ = 5;
+    int houseEndZ = 10;
+
+    // Create foundation (layer 1)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            map[1][x][z] = 10; // Foundation blocks
+        }
+    }
+
+    // Create floor (layer 2)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            map[2][x][z] = 5; // Floor blocks
+        }
+    }
+
+    // Create walls (layer 3)
+    for (int x = houseStartX; x <= houseEndX; x++) {
+        for (int z = houseStartZ; z <= houseEndZ; z++) {
+            if (x == houseStartX || x == houseEndX || z == houseStartZ || z == houseEndZ) {
+                map[3][x][z] = 8; // Wall blocks
+            }
+        }
+    }
+
+    // Add windows
+    map[3][houseStartX][(houseStartZ + houseEndZ) / 2] = 4; // Window on north wall
+    map[3][houseEndX][(houseStartZ + houseEndZ) / 2] = 4;   // Window on south wall
+    map[3][(houseStartX + houseEndX) / 2][houseStartZ] = 4; // Window on west wall
+    map[3][(houseStartX + houseEndX) / 2][houseEndZ] = 4;   // Window on east wall
+
+    // Add fireplace structure (against north wall, centered)
+    int fireplaceX = (houseStartX + houseEndX) / 2;
+    int fireplaceZ = houseStartZ + 1;
+    // Base (layer 2)
+    map[2][fireplaceX - 1][fireplaceZ] = 6; // left base
+    map[2][fireplaceX][fireplaceZ]     = 6; // center base
+    map[2][fireplaceX + 1][fireplaceZ] = 6; // right base
+    // Sides (layer 3)
+    map[3][fireplaceX - 1][fireplaceZ] = 6; // left side
+    map[3][fireplaceX + 1][fireplaceZ] = 6; // right side
+    // Fire (layer 3, center)
+    map[3][fireplaceX][fireplaceZ] = 7; // fire
+    // Top/Hood (layer 4)
+    map[4][fireplaceX - 1][fireplaceZ] = 6; // left top
+    map[4][fireplaceX][fireplaceZ]     = 6; // center top
+    map[4][fireplaceX + 1][fireplaceZ] = 6; // right top
+
+    // Create roof (layer 4)
+    for (int x = houseStartX - 1; x <= houseEndX + 1; x++) {
+        for (int z = houseStartZ - 1; z <= houseEndZ + 1; z++) {
+            if (x >= houseStartX && x <= houseEndX && z >= houseStartZ && z <= houseEndZ) {
+                map[4][x][z] = 9; // Roof blocks
+            }
+        }
+    }
+
+    // Add random grass and flowers around the house
+    srand(static_cast<unsigned int>(time(0)));
+    for (int i = 0; i < 20; i++) {
+        int x = rand() % 15;
+        int z = rand() % 15;
         
-    return ambient + diffuse + specular;
+        // Don't place grass/flowers where the house is
+        if (x < houseStartX - 1 || x > houseEndX + 1 || z < houseStartZ - 1 || z > houseEndZ + 1) {
+            if (rand() % 2 == 0) {
+                map[0][x][z] = 1; // Grass block (was 2 for grass_side)
+            } else {
+                map[1][x][z] = 3; // Flower block above ground (was 0 for ground)
+            }
+        }
+    }
+}
+
+void SpawnLights(Canis::World &_world)
+{
+    Canis::DirectionalLight directionalLight;
+    _world.SpawnDirectionalLight(directionalLight);
+
+    Canis::PointLight pointLight;
+    pointLight.position = vec3(0.0f);
+    pointLight.ambient = vec3(0.2f);
+    pointLight.diffuse = vec3(0.5f);
+    pointLight.specular = vec3(1.0f);
+    pointLight.constant = 1.0f;
+    pointLight.linear = 0.09f;
+    pointLight.quadratic = 0.032f;
+
+    _world.SpawnPointLight(pointLight);
+
+    pointLight.position = vec3(0.0f, 0.0f, 1.0f);
+    pointLight.ambient = vec3(4.0f, 0.0f, 0.0f);
+
+    _world.SpawnPointLight(pointLight);
+
+    pointLight.position = vec3(-2.0f);
+    pointLight.ambient = vec3(0.0f, 4.0f, 0.0f);
+
+    _world.SpawnPointLight(pointLight);
+
+    pointLight.position = vec3(2.0f);
+    pointLight.ambient = vec3(0.0f, 0.0f, 4.0f);
+
+    _world.SpawnPointLight(pointLight);
+}
+
+void AnimateFire(Canis::World &_world, Canis::Entity &_entity, float _deltaTime)
+{
+    static float time = 0.0f;
+    time += _deltaTime;
+    
+    // Update fire animation
+    _entity.shader->Use();
+    _entity.shader->SetFloat("TIME", time);
+    _entity.shader->UnUse();
+    
+    // Add some random movement to make the fire look more natural
+    _entity.transform.position.y += (rand() % 100 - 50) * 0.0001f;
+    _entity.transform.scale.x = 1.0f + sin(time * 2.0f) * 0.1f;
+    _entity.transform.scale.z = 1.0f + cos(time * 2.0f) * 0.1f;
 }
