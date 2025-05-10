@@ -33,6 +33,7 @@ std::vector<std::vector<std::vector<unsigned int>>> map = {};
 void SpawnLights(Canis::World &_world);
 void LoadMap(std::string _path);
 void Rotate(Canis::World &_world, Canis::Entity &_entity, float _deltaTime);
+void AnimateFire(Canis::World &_world, Canis::Entity &_entity, float _deltaTime);
 
 #ifdef _WIN32
 #define main SDL_main
@@ -89,6 +90,18 @@ int main(int argc, char* argv[])
     grassShader.SetBool("WIND", true);
     grassShader.SetFloat("WINDEFFECT", 0.2);
     grassShader.UnUse();
+
+    Canis::Shader fireShader;
+    fireShader.Compile("assets/shaders/hello_shader.vs", "assets/shaders/hello_shader.fs");
+    fireShader.AddAttribute("aPosition");
+    fireShader.Link();
+    fireShader.Use();
+    fireShader.SetInt("MATERIAL.diffuse", 0);
+    fireShader.SetInt("MATERIAL.specular", 1);
+    fireShader.SetFloat("MATERIAL.shininess", 32);
+    fireShader.SetBool("FIRE", true);
+    fireShader.SetFloat("TIME", 0.0f);
+    fireShader.UnUse();
     /// END OF SHADER
 
     /// Load Image
@@ -101,6 +114,7 @@ int main(int argc, char* argv[])
     Canis::GLTexture cobblestoneTexture = Canis::LoadImageGL("assets/textures/cobblestone.png", false);
     Canis::GLTexture bricksTexture = Canis::LoadImageGL("assets/textures/bricks.png", false);
     Canis::GLTexture grassSideTexture = Canis::LoadImageGL("assets/textures/grass_block_side.png", false);
+    Canis::GLTexture fireTexture = Canis::LoadImageGL("assets/textures/fire.png", true);
     /// End of Image Loading
 
     /// Load Models
@@ -177,6 +191,16 @@ int main(int argc, char* argv[])
                     entity.model = &cubeModel;
                     entity.shader = &shader;
                     entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    world.Spawn(entity);
+                    break;
+                case 7: // places an animated fire
+                    entity.tag = "fire";
+                    entity.albedo = &fireTexture;
+                    entity.specular = &textureSpecular;
+                    entity.model = &cubeModel;
+                    entity.shader = &fireShader;
+                    entity.transform.position = vec3(x + 0.0f, y + 0.0f, z + 0.0f);
+                    entity.Update = &AnimateFire;
                     world.Spawn(entity);
                     break;
                 case 8: // places a house wall block (oak log)
@@ -292,6 +316,10 @@ void LoadMap(std::string _path)
     map[3][(houseStartX + houseEndX) / 2][houseStartZ] = 4; // Window on west wall
     map[3][(houseStartX + houseEndX) / 2][houseEndZ] = 4;   // Window on east wall
 
+    // Add fireplace
+    map[3][(houseStartX + houseEndX) / 2][houseStartZ + 1] = 6; // Fireplace base
+    map[3][(houseStartX + houseEndX) / 2][houseStartZ + 1] = 7; // Fire (new case)
+
     // Create roof (layer 4)
     for (int x = houseStartX - 1; x <= houseEndX + 1; x++) {
         for (int z = houseStartZ - 1; z <= houseEndZ + 1; z++) {
@@ -348,4 +376,20 @@ void SpawnLights(Canis::World &_world)
     pointLight.ambient = vec3(0.0f, 0.0f, 4.0f);
 
     _world.SpawnPointLight(pointLight);
+}
+
+void AnimateFire(Canis::World &_world, Canis::Entity &_entity, float _deltaTime)
+{
+    static float time = 0.0f;
+    time += _deltaTime;
+    
+    // Update fire animation
+    _entity.shader->Use();
+    _entity.shader->SetFloat("TIME", time);
+    _entity.shader->UnUse();
+    
+    // Add some random movement to make the fire look more natural
+    _entity.transform.position.y += (rand() % 100 - 50) * 0.0001f;
+    _entity.transform.scale.x = 1.0f + sin(time * 2.0f) * 0.1f;
+    _entity.transform.scale.z = 1.0f + cos(time * 2.0f) * 0.1f;
 }

@@ -41,24 +41,44 @@ uniform float TIME;
 
 uniform vec3 VIEWPOS;
 
+uniform sampler2D MATERIAL_DIFFUSE;
+uniform sampler2D MATERIAL_SPECULAR;
+uniform float MATERIAL_SHININESS;
+uniform bool WIND;
+uniform bool FIRE;
+uniform float WINDEFFECT;
+
 vec3 CalculateDirectionalLight(DirectionalLight _directionalLight);
 vec3 CalculatePointLight(PointLight _pointLight);
 
 void main() {
-	// base color
-	vec4 color = texture(MATERIAL.diffuse, fragmentUV) * vec4(COLOR, 1.0);
+	vec2 texCoords = fragmentUV;
+	
+	if (FIRE) {
+		// Animate fire texture coordinates
+		texCoords.y += sin(TIME * 3.0 + texCoords.x * 10.0) * 0.1;
+		texCoords.x += sin(TIME * 2.0 + texCoords.y * 8.0) * 0.1;
+	}
+	
+	vec4 texColor = texture(MATERIAL_DIFFUSE, texCoords);
+	
+	if (FIRE) {
+		// Add fire glow effect
+		float glow = sin(TIME * 4.0) * 0.5 + 0.5;
+		texColor.rgb += vec3(glow * 0.3, glow * 0.2, 0.0);
+	}
 
-    if (color.a <= 0.0)
-    {
-        discard;
-    }
+	if (texColor.a <= 0.0)
+	{
+		discard;
+	}
 
 	vec3 result = CalculateDirectionalLight(DIRECTIONALLIGHT);
 
 	for(int i = 0; i < NUMBEROFPOINTLIGHTS; i++)
 		result += CalculatePointLight(POINTLIGHTS[i]);
 
-	FragColor = color * vec4(result, 1.0);
+	FragColor = texColor * vec4(result, 1.0);
 }
 
 vec3 CalculateDirectionalLight(DirectionalLight _directionalLight)
